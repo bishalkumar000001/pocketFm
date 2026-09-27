@@ -118,10 +118,11 @@ class Database:
                    VALUES (%s,%s,%s,%s) RETURNING id""", (user_id, story_id, start, end)
             ).fetchone()
             job_id = int(row["id"])
-            conn.executemany(
-                "INSERT INTO job_items (job_id,episode_number) VALUES (%s,%s)",
-                [(job_id, n) for n in range(start, end + 1)],
-            )
+            with conn.cursor() as cur:
+                cur.executemany(
+                    "INSERT INTO job_items (job_id,episode_number) VALUES (%s,%s)",
+                    [(job_id, n) for n in range(start, end + 1)],
+                )
             conn.commit()
             return job_id
 
