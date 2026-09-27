@@ -1,0 +1,22 @@
+{
+  "name": "Pocket FM Telegram Bot",
+  "description": "Heroku-ready Telegram story search/download job bot using an authorized catalog/media provider.",
+  "stack": "heroku-24",
+  "buildpacks": [
+    {"url": "heroku/python"}
+  ],
+  "addons": [
+    {"plan": "heroku-postgresql:essential-0"}
+  ],
+  "env": {
+    "BOT_TOKEN": {"required": true},
+    "ADMIN_IDS": {"required": false},
+    "CATALOG_API_URL": {"required": false},
+    "CATALOG_API_KEY": {"required": false},
+    "MAX_RANGE": {"value": "100"},
+    "MAX_CONCURRENT_JOBS": {"value": "1"},
+    "REQUEST_TIMEOUT": {"value": "60"},
+    "MAX_RETRIES": {"value": "3"},
+    "LOG_LEVEL": {"value": "INFO"}
+  }
+}
