@@ -23,7 +23,7 @@ if not settings.database_url:
     raise RuntimeError("DATABASE_URL is required. Attach Heroku Postgres or provide a PostgreSQL URL.")
 
 db = Database(settings.database_url)
-catalog = CatalogClient(settings.catalog_api_url, settings.catalog_api_key, settings.request_timeout)
+catalog = CatalogClient(settings.request_timeout)
 
 sessions: dict[int, dict] = {}
 active_tasks: dict[int, asyncio.Task] = {}
@@ -94,7 +94,7 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not results:
         await update.effective_message.reply_text(
-            "No story data was returned. Configure CATALOG_API_URL with your documented/authorized catalog provider."
+            "No matching public Pocket FM stories were found. Try a different title or spelling."
         )
         return
 
@@ -153,7 +153,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if index < 0 or index >= len(results):
             await update.effective_message.reply_text("Invalid result number.")
             return
-        story = results[index]
+        story = await catalog.get_story(results[index])
         session["story"] = story
         caption = (
             f"🎧 <b>{esc(story.get('title', 'Untitled'))}</b>\n\n"
@@ -193,6 +193,18 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         active_tasks.pop(update.effective_user.id, None)
 
 
+async def download_public_media(url: str, path: str):
+    import aiohttp
+    timeout = aiohttp.ClientTimeout(total=settings.request_timeout)
+    async with aiohttp.ClientSession(timeout=timeout, headers={"User-Agent": "Mozilla/5.0"}) as session:
+        async with session.get(url, allow_redirects=True) as response:
+            response.raise_for_status()
+            with open(path, "wb") as output:
+                async for chunk in response.content.iter_chunked(1024 * 256):
+                    output.write(chunk)
+
+
+
 async def run_job(update: Update, story: dict, start: int, end: int):
     user_id = update.effective_user.id
     job_id = await asyncio.to_thread(db.create_job, user_id, str(story["id"]), start, end)
@@ -222,13 +234,26 @@ async def run_job(update: Update, story: dict, start: int, end: int):
                     if not media or not media.get("url"):
                         raise RuntimeError("Episode media is not available from the configured authorized source.")
 
-                    # Media delivery is intentionally delegated to the authorized provider.
-                    # This starter does not bypass DRM/paywalls/access controls.
-                    await update.effective_message.reply_text(
-                        f"Episode {episode} is available from the configured authorized source, "
-                        "but no automatic media uploader is enabled in this safe starter."
-                    )
-                    success += 1
+                    # Only directly exposed public media URLs are downloaded.
+                    # Locked/DRM/protected episodes return no usable URL and are skipped.
+                    if media.get("url"):
+                        import os
+                        filename = f"episode_{episode}.mp3"
+                        path = os.path.join("/tmp", f"pocketfm_{user_id}_{job_id}_{episode}")
+                        await download_public_media(media["url"], path)
+                        with open(path, "rb") as fh:
+                            await update.effective_message.reply_audio(
+                                audio=fh,
+                                filename=filename,
+                                caption=f"{story.get('title', 'Story')} — Episode {episode}: {media.get('title', '')}",
+                            )
+                        try:
+                            os.remove(path)
+                        except OSError:
+                            pass
+                        success += 1
+                    else:
+                        raise RuntimeError("No directly accessible public media URL was exposed for this episode.")
                     await asyncio.to_thread(db.set_item, job_id, episode, "success")
                 except asyncio.CancelledError:
                     raise

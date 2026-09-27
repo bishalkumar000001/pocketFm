@@ -23,8 +23,8 @@ Optional:
 
 ```text
 ADMIN_IDS=123456789,987654321
-CATALOG_API_URL=https://your-authorized-provider.example/api
-CATALOG_API_KEY=your-key
+Pocket FM public web catalog=https://your-authorized-provider.example/api
+(no catalog key required)=your-key
 MAX_RANGE=100
 MAX_CONCURRENT_JOBS=1
 REQUEST_TIMEOUT=60
@@ -69,3 +69,8 @@ There are no episode inline buttons. After choosing a story, the user types the 
 The episode response should contain a usable `url` for media the requesting user is authorized to access.
 
 This project intentionally does not bypass DRM, paywalls, authentication barriers, signed-access restrictions, or other access controls.
+
+
+## Catalog
+
+The bot reads story/search metadata from Pocket FM's public web pages, so `CATALOG_API_URL` and `CATALOG_API_KEY` are not required. It does not attempt to bypass login, coins, DRM, signed-media restrictions, or other access controls. A download is attempted only when the public page exposes a directly usable media URL.
