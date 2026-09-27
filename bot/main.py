@@ -126,6 +126,17 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    log.exception("Unhandled Telegram update error", exc_info=context.error)
+    if isinstance(update, Update) and update.effective_message:
+        try:
+            await update.effective_message.reply_text(
+                "Something went wrong while processing that request. Please try again."
+            )
+        except Exception:
+            log.exception("Failed to send error message to user")
+
+
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in settings.admin_ids:
         await update.effective_message.reply_text("Admin only.")
@@ -154,6 +165,9 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.effective_message.reply_text("Invalid result number.")
             return
         story = await catalog.get_story(results[index])
+        # Persist the selected story before any download job references it.
+        # jobs.story_id has a foreign key to stories.id.
+        await asyncio.to_thread(db.save_story, story)
         session["story"] = story
         caption = (
             f"🎧 <b>{esc(story.get('title', 'Untitled'))}</b>\n\n"
@@ -293,6 +307,7 @@ def main():
     application.add_handler(CommandHandler("stats", stats_command))
     application.add_handler(CommandHandler("admin", admin_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
+    application.add_error_handler(error_handler)
     log.info("Starting Pocket FM Telegram bot")
     application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
